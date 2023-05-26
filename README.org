@@ -1,0 +1,28 @@
+Still WIP, proper readme will be supplied later
+
+NOTE: you need Inoreader Pro (paid!) account to use the API
+
+- set up the application on Inoreader website https://www.inoreader.com/#preferences-developer
+
+  take note of
+  - =app_id=
+  - =app_key=
+  - =redirect_uri=
+
+  put these in the secrets file
+
+- call =get_token=
+
+  as a result you'll get a json token, put it in the secrets file
+
+  : token = {
+  :     'access_token': 'XXX',
+  :     'expires_in': 86400,
+  :     'token_type': 'bearer',
+  :     'scope': ['read'],
+  :     'refresh_token': 'XXXXXXXX',
+  :     'expires_at': 1685219181.56797
+  : }
+
+
+  after that the token should get refresh automatically when you run the script (it only really needs =refresh_token=?)
