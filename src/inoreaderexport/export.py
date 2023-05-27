@@ -4,8 +4,9 @@ from uuid import uuid4
 
 from requests_oauthlib import OAuth2Session
 
-from http.client import HTTPConnection
-HTTPConnection.debuglevel = 1
+# useful to debug requests
+# from http.client import HTTPConnection
+# HTTPConnection.debuglevel = 1
 
 
 app_id = 'TODO'
@@ -44,8 +45,6 @@ def get_token():
 
 
 API = 'https://www.inoreader.com/reader/api/0'
-# n=100 seems like maximum according to the api
-# METHOD = "stream/contents/user/-/state/com.google/annotated?annotations=1&n=100"
 
 # note: yes, it always contains com.google https://www.inoreader.com/developers/stream-ids
 ANNOTATED = 'stream/contents/user/-/state/com.google/annotated'
@@ -62,7 +61,7 @@ ANNOTATED = 'stream/contents/user/-/state/com.google/annotated'
 # without token_updater, it throws a TokenUpdated exception
 # we are not saving it anywhere (relying on refresh_token to get new access_token every time), so this just prevents the exception
 def token_updater(xxx):
-    print("UPDATED", xxx)
+    pass
 
 
 client = OAuth2Session(
@@ -81,6 +80,7 @@ def fetch_one(continuation: str | None):
     MAX_NUMBER = 100  # https://www.inoreader.com/developers/stream-contents
     # MAX_NUMBER = 20  # https://www.inoreader.com/developers/stream-contents
     # TODO assert result is OK?
+    # MAX_NUMBER = 2
     return client.get(
         API + '/' + ANNOTATED,
         params={
@@ -105,17 +105,26 @@ def fetch_all():
 
     return all_items
 
-items = fetch_all()
 
-print("GOT", len(items))
-for i in items:
-    print(i['title'])
+def get_json():
+    annotated = fetch_all()
+    res = {ANNOTATED: annotated}
+    return res
 
-# print(client.get(API + '/' + METHOD).json())
-    # auto_refresh_kwargs=extra, token_updater=token_saver)
 
-# ok, this token can be used for API
-# print(token['access_token'])
-# token['expires_in']
-# token['expires_at']
-# token['refresh_token']
+def main() -> None:
+    from argparse import ArgumentParser
+    p = ArgumentParser()
+    args = p.parse_args()
+
+    j = get_json()
+    # j = {}
+
+    import json
+    import sys
+    json.dump(j, fp=sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
+
+if __name__ == '__main__':
+    main()
+
+
