@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from uuid import uuid4
+import sys
 
 from requests_oauthlib import OAuth2Session
 
@@ -115,13 +117,16 @@ def get_json():
 def main() -> None:
     from argparse import ArgumentParser
     p = ArgumentParser()
+    p.add_argument('--login', action='store_true')
     args = p.parse_args()
+
+    if args.login:
+        print(get_token())
+        sys.exit(0)
 
     j = get_json()
     # j = {}
 
-    import json
-    import sys
     json.dump(j, fp=sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
 
 if __name__ == '__main__':
