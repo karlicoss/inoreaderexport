@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
+from pathlib import Path
 from uuid import uuid4
-import sys
+
+from .exporthelpers.export_helper import Json
 
 from requests_oauthlib import OAuth2Session
 
@@ -11,125 +14,138 @@ from requests_oauthlib import OAuth2Session
 # HTTPConnection.debuglevel = 1
 
 
-app_id = 'TODO'
-app_key = 'TODO'
-redirect_uri = 'TODO'
-token = 'TODO'
-
-
-def get_token():
-    state = str(uuid4())
-
-    oauth = OAuth2Session(
-        app_id,
-        redirect_uri=redirect_uri,
-        scope='read',
-        state=state,
-    )
-
-    authorization_url, state = oauth.authorization_url(
-        'https://www.inoreader.com/oauth2/auth'
-    )
-    print("go to", authorization_url)
-
-    authorization_response = input('Enter the full callback URL').strip()
-
-    # insert the resulting URI
-    # input()
-    # authorization_response = 'https://github.com/karlicoss?code=370ffb7af265cf5214d3d6a8c00664ba1c1050be&state=aa25d7e4-a8d4-4862-9d11-0d638d8cf421'
-
-    token = oauth.fetch_token(
-        'https://www.inoreader.com/oauth2/token',
-        authorization_response=authorization_response,
-        client_secret=app_key,
-    )
-    return token
-
-
 API = 'https://www.inoreader.com/reader/api/0'
 
 # note: yes, it always contains com.google https://www.inoreader.com/developers/stream-ids
 ANNOTATED = 'stream/contents/user/-/state/com.google/annotated'
 
-
-# client = OAuth2Session(app_id, token=token)
-# res = client.get(API + '/' + METHOD)
-# print(res.json())
-
-# todo not sure if really need it? I suppose if the token in secrets is stale it would get auto refreshed
-# del token['expires_at']
-# token['expires_in'] = 0
-
-# without token_updater, it throws a TokenUpdated exception
-# we are not saving it anywhere (relying on refresh_token to get new access_token every time), so this just prevents the exception
-def token_updater(xxx):
-    pass
+Token = Json
 
 
-client = OAuth2Session(
-    app_id,
-    token=token,
-    auto_refresh_url='https://www.inoreader.com/oauth2/token',
-    auto_refresh_kwargs={
-        'client_id': app_id,
-        'client_secret': app_key,
-    },
-    token_updater=token_updater,
-)
+class Exporter:
+    def __init__(self, *, app_id: str, app_key: str, redirect_uri: str, token_path: str) -> None:
+        self.app_id = app_id
+        self.app_key = app_key
+        self.redirect_uri = redirect_uri
+        self.token_path = token_path
+
+    def login(self) -> None:
+        state = str(uuid4())
+
+        oauth = OAuth2Session(
+            self.app_id,
+            redirect_uri=self.redirect_uri,
+            scope='read',
+            state=state,
+        )
+
+        authorization_url, state = oauth.authorization_url(
+            'https://www.inoreader.com/oauth2/auth'
+        )
+        print("go to", authorization_url)
+
+        authorization_response = input('Enter the full callback URL\n').strip()
+
+        token = oauth.fetch_token(
+            'https://www.inoreader.com/oauth2/token',
+            authorization_response=authorization_response,
+            client_secret=self.app_key,
+        )
+
+        self._save_token(token)
+
+    def _save_token(self, token: Token) -> None:
+        Path(self.token_path).write_text(json.dumps(token))
+
+    def _read_token(self) -> Token:
+        tpath = Path(self.token_path)
+        assert tpath.exists(), f'{tpath} does not exist -- you probably forgot to call --login'
+        return json.loads(tpath.read_text())
+
+    # hmm I tried making it work with auto_refresh_token/auto_refresh_kwargs but it didn't work..
+    # so let's try to rely on just refreshing the tokens every time we run the script
+    def _refresh_token(self) -> None:
+        client = self._get_client()
+        new_token = client.refresh_token(
+            'https://www.inoreader.com/oauth2/token',
+            client_id=self.app_id,
+            client_secret=self.app_key,
+        )
+        self._save_token(new_token)
+
+    @lru_cache(None)
+    def _get_client(self) -> OAuth2Session:
+        return OAuth2Session(
+            self.app_id,
+            token=self._read_token(),
+        )
+
+    def _fetch_one(self, continuation: str | None) -> Json:
+        MAX_NUMBER = 100  # https://www.inoreader.com/developers/stream-contents
+        return self._get_client().get(
+            API + '/' + ANNOTATED,
+            params={
+                'annotations': '1',
+                'n': MAX_NUMBER,
+                **({} if continuation is None else {'c': continuation}),
+            },
+        ).json()
+
+    def _fetch_all(self) -> list[Json]:
+        # order is newest first by default
+        all_items = []
+
+        continuation = None
+        while True:
+            res = self._fetch_one(continuation=continuation)
+            all_items.extend(res['items'])
+            continuation = res.get('continuation')
+            if continuation is None:
+                break
+
+        return all_items
+
+    def export_json(self) -> Json:
+        # always refresh token to make sure we don't get stale refresh_token?
+        self._refresh_token()
+
+        annotated = self._fetch_all()
+        res = {ANNOTATED: annotated}
+        return res
 
 
-def fetch_one(continuation: str | None):
-    MAX_NUMBER = 100  # https://www.inoreader.com/developers/stream-contents
-    # MAX_NUMBER = 20  # https://www.inoreader.com/developers/stream-contents
-    # TODO assert result is OK?
-    # MAX_NUMBER = 2
-    return client.get(
-        API + '/' + ANNOTATED,
-        params={
-            'annotations': '1',
-            'n': MAX_NUMBER,
-            **({} if continuation is None else {'c': continuation}),
-        },
-    ).json()
-
-
-def fetch_all():
-    # order is newest first by default
-    all_items = []
-
-    continuation = None
-    while True:
-        res = fetch_one(continuation=continuation)
-        all_items.extend(res['items'])
-        continuation = res.get('continuation')
-        if continuation is None:
-            break
-
-    return all_items
-
-
-def get_json():
-    annotated = fetch_all()
-    res = {ANNOTATED: annotated}
-    return res
+def make_parser():
+    from .exporthelpers.export_helper import setup_parser, Parser
+    p = Parser('Export your Inoreader annotation data as JSON.')
+    setup_parser(
+        parser=p,
+        params=[
+            'app_id'       ,
+            'app_key'      ,
+            'redirect_uri' ,
+            'token_path'   ,
+        ]
+    )
+    p.add_argument('--login', action='store_true', help='Use this for initial login to initialize the token in token_path')
+    return p
 
 
 def main() -> None:
-    from argparse import ArgumentParser
-    p = ArgumentParser()
-    p.add_argument('--login', action='store_true')
+    p = make_parser()
     args = p.parse_args()
 
+    params = args.params
+    dumper = args.dumper
+
+    exporter = Exporter(**params)
+
     if args.login:
-        print(get_token())
-        sys.exit(0)
+        exporter.login()
 
-    j = get_json()
-    # j = {}
+    j = exporter.export_json()
+    js = json.dumps(j, ensure_ascii=False, indent=1)
+    dumper(js)
 
-    json.dump(j, fp=sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
 
 if __name__ == '__main__':
     main()
-
-

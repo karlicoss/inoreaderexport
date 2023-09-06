@@ -8,21 +8,12 @@ NOTE: you need Inoreader Pro (paid!) account to use the API
   - =app_id=
   - =app_key=
   - =redirect_uri=
+  come up with a path to =token.json= file (it won't exist at first, will get initialized during the initial login)
+  - =token_path=
 
-  put these in the secrets file
+  put these in the =secrets.py= file
 
-- call =get_token=
+  On the first export, call the tool with =--login= (in addition to =--secrets=!), it will give you the instructions to authorise the script for Inoreader data access
 
-  as a result you'll get a json token, put it in the secrets file
-
-  : token = {
-  :     'access_token': 'XXX',
-  :     'expires_in': 86400,
-  :     'token_type': 'bearer',
-  :     'scope': ['read'],
-  :     'refresh_token': 'XXXXXXXX',
-  :     'expires_at': 1685219181.56797
-  : }
-
-
-  after that the token should get refresh automatically when you run the script (it only really needs =refresh_token=?)
+  After that you should be able to use the tool just by passing =--secrets=.
+  The token should get refresh automatically when you run the script.
