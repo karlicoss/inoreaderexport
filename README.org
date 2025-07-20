@@ -2,6 +2,8 @@ Still WIP, proper readme will be supplied later
 
 NOTE: you need Inoreader Pro (paid!) account to use the API
 
+- to install, run `pip3 install --user 'git+https://github.com/karlicoss/inoreaderexport[export]'`
+
 - set up the application on Inoreader website https://www.inoreader.com/#preferences-developer
 
   take note of

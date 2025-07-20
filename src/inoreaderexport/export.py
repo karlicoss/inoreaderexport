@@ -5,9 +5,9 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
-from .exporthelpers.export_helper import Json
-
 from requests_oauthlib import OAuth2Session
+
+from .exporthelpers.export_helper import Json, Parser, setup_parser
 
 # useful to debug requests
 # from http.client import HTTPConnection
@@ -39,9 +39,7 @@ class Exporter:
             state=state,
         )
 
-        authorization_url, state = oauth.authorization_url(
-            'https://www.inoreader.com/oauth2/auth'
-        )
+        authorization_url, state = oauth.authorization_url('https://www.inoreader.com/oauth2/auth')
         print("go to", authorization_url)
 
         authorization_response = input('Enter the full callback URL\n').strip()
@@ -73,7 +71,7 @@ class Exporter:
         )
         self._save_token(new_token)
 
-    @lru_cache(None)
+    @lru_cache(None)  # noqa: B019
     def _get_client(self) -> OAuth2Session:
         return OAuth2Session(
             self.app_id,
@@ -82,14 +80,12 @@ class Exporter:
 
     def _fetch_one(self, continuation: str | None) -> Json:
         MAX_NUMBER = 100  # https://www.inoreader.com/developers/stream-contents
-        return self._get_client().get(
-            API + '/' + ANNOTATED,
-            params={
-                'annotations': '1',
-                'n': MAX_NUMBER,
-                **({} if continuation is None else {'c': continuation}),
-            },
-        ).json()
+        params: dict[str, str | int] = {
+            'annotations': '1',
+            'n': MAX_NUMBER,
+            **({} if continuation is None else {'c': continuation}),
+        }
+        return self._get_client().get(API + '/' + ANNOTATED, params=params).json()
 
     def _fetch_all(self) -> list[Json]:
         # order is newest first by default
@@ -115,16 +111,15 @@ class Exporter:
 
 
 def make_parser():
-    from .exporthelpers.export_helper import setup_parser, Parser
     p = Parser('Export your Inoreader annotation data as JSON.')
     setup_parser(
         parser=p,
         params=[
-            'app_id'       ,
-            'app_key'      ,
-            'redirect_uri' ,
-            'token_path'   ,
-        ]
+            'app_id',
+            'app_key',
+            'redirect_uri',
+            'token_path',
+        ],
     )
     p.add_argument('--login', action='store_true', help='Use this for initial login to initialize the token in token_path')
     return p
@@ -137,7 +132,7 @@ def main() -> None:
     params = args.params
     dumper = args.dumper
 
-    exporter = Exporter(**params)
+    exporter = Exporter(**params)  # ty: ignore[missing-argument]
 
     if args.login:
         exporter.login()
