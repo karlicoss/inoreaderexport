@@ -121,7 +121,9 @@ def make_parser():
             'token_path',
         ],
     )
-    p.add_argument('--login', action='store_true', help='Use this for initial login to initialize the token in token_path')
+    p.add_argument(
+        '--login', action='store_true', help='Use this for initial login to initialize the token in token_path'
+    )
     return p
 
 
@@ -132,7 +134,7 @@ def main() -> None:
     params = args.params
     dumper = args.dumper
 
-    exporter = Exporter(**params)  # ty: ignore[missing-argument]
+    exporter = Exporter(**params)
 
     if args.login:
         exporter.login()
