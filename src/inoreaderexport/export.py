@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,7 +17,38 @@ from .exporthelpers.export_helper import Json, Parser, setup_parser
 API = 'https://www.inoreader.com/reader/api/0'
 
 # note: yes, it always contains com.google https://www.inoreader.com/developers/stream-ids
-ANNOTATED = 'stream/contents/user/-/state/com.google/annotated'
+CONTENT_STREAMS = (
+    'stream/contents/user/-/state/com.google/annotated',
+    'stream/contents/user/-/state/com.google/starred',
+    'stream/contents/user/-/state/com.google/broadcast',
+    'stream/contents/user/-/state/com.google/like',
+    'stream/contents/user/-/state/com.google/saved-web-pages',
+)
+
+READING_LIST = 'user/-/state/com.google/reading-list'
+READ = 'user/-/state/com.google/read'
+
+ACCOUNT_REQUESTS: dict[str, dict[str, str | int]] = {
+    'subscription/list': {
+        'team_assets': '1',
+        'ino': 'reader',
+    },
+    'tag/list': {
+        'types': '1',
+        'counts': '1',
+        'team_assets': '1',
+        'ino': 'reader',
+    },
+    'preference/stream/list': {
+        'ino': 'reader',
+    },
+    'user-info': {
+        'ino': 'reader',
+    },
+    'preference/list': {
+        'ino': 'reader',
+    },
+}
 
 Token = Json
 
@@ -71,47 +102,107 @@ class Exporter:
         )
         self._save_token(new_token)
 
-    @lru_cache(None)  # noqa: B019
+    @cache  # noqa: B019
     def _get_client(self) -> OAuth2Session:
         return OAuth2Session(
             self.app_id,
             token=self._read_token(),
         )
 
-    def _fetch_one(self, continuation: str | None) -> Json:
-        MAX_NUMBER = 100  # https://www.inoreader.com/developers/stream-contents
-        params: dict[str, str | int] = {
-            'annotations': '1',
-            'n': MAX_NUMBER,
-            **({} if continuation is None else {'c': continuation}),
-        }
-        return self._get_client().get(API + '/' + ANNOTATED, params=params).json()
+    def _get_json(self, *, endpoint: str, params: dict[str, str | int]) -> Json:
+        response = self._get_client().get(API + '/' + endpoint, params=params)
+        response.raise_for_status()
+        result = response.json()
+        assert isinstance(result, dict), result
+        return result
 
-    def _fetch_all(self) -> list[Json]:
+    def _fetch_paginated(
+        self,
+        *,
+        endpoint: str,
+        params: dict[str, str | int],
+        items_key: str,
+    ) -> list[Json]:
+        """Fetch every continuation page and combine the response lists stored under ``items_key``."""
         # order is newest first by default
-        all_items = []
-
+        all_items: list[Json] = []
         continuation = None
         while True:
-            res = self._fetch_one(continuation=continuation)
-            all_items.extend(res['items'])
+            request_params = {
+                **params,
+                **({} if continuation is None else {'c': continuation}),
+            }
+            res = self._get_json(endpoint=endpoint, params=request_params)
+            page_items = res[items_key]
+            assert isinstance(page_items, list), page_items
+            all_items.extend(page_items)
             continuation = res.get('continuation')
             if continuation is None:
                 break
+            assert isinstance(continuation, str), continuation
 
         return all_items
 
-    def export_json(self) -> Json:
+    def _fetch_content_stream(self, *, stream: str) -> list[Json]:
+        return self._fetch_paginated(
+            endpoint=stream,
+            params={
+                'annotations': '1',
+                'summaries': '1',
+                # 100 is the documented maximum: https://www.inoreader.com/developers/stream-contents
+                'n': 100,
+            },
+            items_key='items',
+        )
+
+    def _fetch_item_refs(self, *, include: str | None, exclude: str | None) -> list[Json]:
+        assert (include is None) != (exclude is None), (include, exclude)
+        params: dict[str, str | int] = {
+            'includeAllDirectStreamIds': 'false',
+            # 1000 is the documented maximum: https://www.inoreader.com/developers/item-ids
+            'n': 1000,
+            's': READING_LIST,
+        }
+        if include is not None:
+            params['it'] = include
+        if exclude is not None:
+            params['xt'] = exclude
+        return self._fetch_paginated(
+            endpoint='stream/items/ids',
+            params=params,
+            items_key='itemRefs',
+        )
+
+    def _fetch_account(self) -> dict[str, Json]:
+        return {
+            endpoint: self._get_json(endpoint=endpoint, params=params) for endpoint, params in ACCOUNT_REQUESTS.items()
+        }
+
+    def export_json(self, *, include_reading_state: bool = False) -> Json:
         # always refresh token to make sure we don't get stale refresh_token?
         self._refresh_token()
 
-        annotated = self._fetch_all()
-        res = {ANNOTATED: annotated}
+        # Keep exact stream endpoint keys and separate item lists.
+        # This preserves the original annotated shape and makes overlapping stream membership explicit.
+        res: Json = {stream: self._fetch_content_stream(stream=stream) for stream in CONTENT_STREAMS}
+        res['account'] = self._fetch_account()
+        if include_reading_state:
+            res['reading_state'] = {
+                'stream': READING_LIST,
+                'read': {
+                    'include': READ,
+                    'itemRefs': self._fetch_item_refs(include=READ, exclude=None),
+                },
+                'unread': {
+                    'exclude': READ,
+                    'itemRefs': self._fetch_item_refs(include=None, exclude=READ),
+                },
+            }
         return res
 
 
 def make_parser():
-    p = Parser('Export your Inoreader annotation data as JSON.')
+    p = Parser('Export your Inoreader account data as JSON.')
     setup_parser(
         parser=p,
         params=[
@@ -123,6 +214,14 @@ def make_parser():
     )
     p.add_argument(
         '--login', action='store_true', help='Use this for initial login to initialize the token in token_path'
+    )
+    p.add_argument(
+        '--include-reading-state',
+        action='store_true',
+        help=(
+            'Include fully paginated read/unread item IDs. '
+            'This can exhaust the daily Zone 1 quota before the export is written.'
+        ),
     )
     return p
 
@@ -139,7 +238,7 @@ def main() -> None:
     if args.login:
         exporter.login()
 
-    j = exporter.export_json()
+    j = exporter.export_json(include_reading_state=args.include_reading_state)
     js = json.dumps(j, ensure_ascii=False, indent=1)
     dumper(js)
 
