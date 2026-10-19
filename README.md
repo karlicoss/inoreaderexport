@@ -1,85 +1,86 @@
-#+title: Inoreader export
+# Inoreader export
 
 Export a private, raw JSON backup of Inoreader content (annotations/saved articles etc) and account configuration.
 
 NOTE: you need Inoreader Pro (paid!) account to use the API.
 
-* Installation
+## Installation
 
 Run:
 
-#+begin_src shell
+```shell
 pip3 install --user 'git+https://github.com/karlicoss/inoreaderexport[export]'
-#+end_src
+```
 
-* Setup and usage
+## Setup and usage
 
-- Set up the application on the Inoreader website: https://www.inoreader.com/#preferences-developer
+- Set up the application on the Inoreader website: <https://www.inoreader.com/#preferences-developer>
 
 - Take note of:
-  - =app_id=
-  - =app_key=
-  - =redirect_uri=
-  - =token_path=
 
-  =token_path= is a path to a =token.json= file.
+  - `app_id`
+  - `app_key`
+  - `redirect_uri`
+  - `token_path`
+
+  `token_path` is a path to a `token.json` file.
   It will be initialized during the first login.
 
-- Put these values in a =secrets.py= file.
+- Put these values in a `secrets.py` file.
 
-- On the first export, call the tool with =--login= in addition to =--secrets=.
+- On the first export, call the tool with `--login` in addition to `--secrets`.
   It will give you instructions to authorize access to your Inoreader data.
 
 After that, export to a JSON file with:
 
-#+begin_src shell
+```shell
 python3 -m inoreaderexport.export --secrets /path/to/secrets.py /path/to/inoreader.json
-#+end_src
+```
 
 The token is refreshed and saved automatically each time the exporter runs.
 
-* Output
+## Output
 
 The top-level JSON object contains these full-content stream keys:
 
-- =stream/contents/user/-/state/com.google/annotated=
-- =stream/contents/user/-/state/com.google/starred=
-- =stream/contents/user/-/state/com.google/broadcast=
-- =stream/contents/user/-/state/com.google/like=
-- =stream/contents/user/-/state/com.google/saved-web-pages=
+- `stream/contents/user/-/state/com.google/annotated`
+- `stream/contents/user/-/state/com.google/starred`
+- `stream/contents/user/-/state/com.google/broadcast`
+- `stream/contents/user/-/state/com.google/like`
+- `stream/contents/user/-/state/com.google/saved-web-pages`
 
 Each value is a flat list of all pages returned for that stream.
-The exporter requests both =annotations= and Inoreader Intelligence =summaries= for every stream.
+The exporter requests both `annotations` and Inoreader Intelligence `summaries` for every stream.
 
 The annotated key and its list shape are preserved from the original exporter.
 An article can appear in several stream lists.
 This duplication is intentional because it keeps each raw article payload together with explicit stream membership.
 
-The =account= object stores unmodified JSON responses under their API endpoint names:
+The `account` object stores unmodified JSON responses under their API endpoint names:
 
-- =subscription/list=, including team assets and proprietary =ino=reader= fields
-- =tag/list=, including types, counts, team assets, and proprietary fields
-- =preference/stream/list=
-- =user-info=
-- =preference/list=
+- `subscription/list`, including team assets and proprietary `ino=reader` fields
+- `tag/list`, including types, counts, team assets, and proprietary fields
+- `preference/stream/list`
+- `user-info`
+- `preference/list`
 
 This is a private backup, so these payloads can contain user-specific fields and preferences.
 
 Read/unread state is omitted by default.
-The =stream/items/ids= endpoint supports paginating state IDs, but a full read stream can require enough continuation requests to exhaust the daily Zone 1 limit before the backup is written.
+The `stream/items/ids` endpoint supports paginating state IDs, but a full read stream can require enough continuation requests to exhaust the daily Zone 1 limit before the backup is written.
 The exporter does not yet checkpoint or resume this work, so the default avoids producing a misleading partial state snapshot or preventing the durable account backup from completing.
 
-To opt in despite that limitation, pass =--include-reading-state=:
+To opt in despite that limitation, pass `--include-reading-state`:
 
-#+begin_src shell
+```shell
 python3 -m inoreaderexport.export --include-reading-state --secrets /path/to/secrets.py /path/to/inoreader.json
-#+end_src
+```
 
-This adds a =reading_state= object containing fully paginated =read= and =unread= item references.
+This adds a `reading_state` object containing fully paginated `read` and `unread` item references.
 Use it only when sufficient Zone 1 quota remains.
 A future implementation should persist progress incrementally and support resuming before this becomes safe to enable by default.
 
-* API request limits
+## API request limits
 
 The data export has a base cost of 10 Zone 1 requests: five content streams and five account endpoints.
 Every content-stream continuation page adds another request.
@@ -87,4 +88,4 @@ The optional reading-state export adds at least two more requests, plus every co
 
 Inoreader documents a default limit of 100 requests per day for Zone 1.
 Check current application usage and limits before repeatedly running large exports:
-https://www.inoreader.com/developers/rate-limiting
+<https://www.inoreader.com/developers/rate-limiting>

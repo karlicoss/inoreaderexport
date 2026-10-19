@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import json
 from functools import cache
 from pathlib import Path
 from uuid import uuid4
 
+import hpikit.cli.export as cli
+from hpikit.json import Json
 from requests_oauthlib import OAuth2Session
-
-from .exporthelpers.export_helper import Json, Parser, setup_parser
 
 # useful to debug requests
 # from http.client import HTTPConnection
@@ -201,10 +202,9 @@ class Exporter:
         return res
 
 
-def make_parser():
-    p = Parser('Export your Inoreader account data as JSON.')
-    setup_parser(
-        parser=p,
+def make_parser() -> argparse.ArgumentParser:
+    p = cli.make_parser(
+        description='Export your Inoreader account data as JSON.',
         params=[
             'app_id',
             'app_key',
@@ -230,8 +230,7 @@ def main() -> None:
     p = make_parser()
     args = p.parse_args()
 
-    params = args.params
-    dumper = args.dumper
+    params = cli.get_params(p, args)
 
     exporter = Exporter(**params)
 
@@ -240,7 +239,7 @@ def main() -> None:
 
     j = exporter.export_json(include_reading_state=args.include_reading_state)
     js = json.dumps(j, ensure_ascii=False, indent=1)
-    dumper(js)
+    cli.dump(js, path=args.path)
 
 
 if __name__ == '__main__':

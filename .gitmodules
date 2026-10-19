@@ -1,3 +1,0 @@
-[submodule "src/inoreaderexport/exporthelpers"]
-	path = src/inoreaderexport/exporthelpers
-	url = git@github.com:karlicoss/exporthelpers.git

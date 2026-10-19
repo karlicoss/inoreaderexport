@@ -3,12 +3,13 @@
 dynamic = ["version"]  # version is managed by build backend
 name = "inoreaderexport"
 dependencies = [
+    "hpikit",
 ]
 requires-python = ">=3.12"
 
 ## these are only useful for pypi
 description = "Export your Inoreader data"  # shows on project page/in search
-readme      = {file = "README.org", content-type = "text/plain"}
+readme      = "README.md"
 license     = {file = "LICENSE"}
 authors     = [{name = "Dima Gerasimov (@karlicoss)", email = "karlicoss@gmail.com"}]
 maintainers = [{name = "Dima Gerasimov (@karlicoss)", email = "karlicoss@gmail.com"}]
@@ -22,9 +23,7 @@ Homepage = "https://github.com/karlicoss/inoreaderexport"
 dal = []
 export = ["requests-oauthlib"]
 optional = [
-    "orjson",  # faster json processing
-    "colorlog",
-    "ijson",  # faster iterative json processing
+    "hpikit[optional]", # faster JSON parsing and transparent compression
 ]
 
 [dependency-groups]
@@ -35,7 +34,7 @@ testing = [
     "pytest",
     "ruff",
 
-    "inoreaderexport[export,dal]",
+    "inoreaderexport[export,dal,optional]",
 ]
 typecheck = [
     "mypy",
